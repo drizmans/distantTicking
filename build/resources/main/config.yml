@@ -1,0 +1,60 @@
+# DistantTicking Plugin Configuration
+
+settings:
+  # Interval for automatically saving the force-loaded chunks data to active_chunks.json.
+  # Measured in minutes. (20 ticks = 1 second)
+  auto-save-interval-minutes: 5
+
+  # Interval for the periodic consistency check.
+  # This check verifies if chunks marked for force-loading still contain tick-worthy blocks in their PDC.
+  # Measured in hours.
+  consistency-check-interval-hours: 6
+
+  # Enable debug mode for more verbose console logging.
+  debug-mode: false
+
+# List of materials that, when placed by a player, should make their chunk tick-worthy and force-loaded.
+# Only block entities (TileEntities) that perform continuous operations are typically needed here.
+# Ensure material names are valid Minecraft Material enums (case-insensitive in plugin, but use uppercase for clarity).
+tick-worthy-blocks:
+- FURNACE
+- BLAST_FURNACE
+- SMOKER
+- HOPPER
+- DISPENSER
+- DROPPER
+- BREWING_STAND
+- BEACON
+- JUKEBOX
+- COMPARATOR
+- LECTERN
+- DAYLIGHT_DETECTOR
+- CONDUIT
+- COMMAND_BLOCK
+- CHAIN_COMMAND_BLOCK
+- REPEATING_COMMAND_BLOCK
+- REPEATER
+- REDSTONE_WIRE
+- PISTON
+- STICKY_PISTON
+- REDSTONE_TORCH
+- REDSTONE_WALL_TORCH
+- LEVER
+- STONE_BUTTON
+- WOODEN_BUTTON
+- STONE_PRESSURE_PLATE
+- WOODEN_PRESSURE_PLATE
+- LIGHT_WEIGHTED_PRESSURE_PLATE
+- HEAVY_WEIGHTED_PRESSURE_PLATE
+- TRIPWIRE_HOOK
+- OBSERVER
+- TARGET
+- RAIL
+- POWERED_RAIL
+- DETECTOR_RAIL
+- ACTIVATOR_RAIL
+
+# Suggestion for server owners:
+# Consider lowering your server's 'simulation-distance' in server.properties
+# to a value like 4-8, and let this plugin manage persistent ticking for machines.
+# This can significantly improve overall server performance.
