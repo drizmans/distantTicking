@@ -285,13 +285,13 @@ public class ForceLoadManager {
                             continue; // Skip this chunk, try again next cycle
                         }
 
-                        // Check the PDC count for this specific chunk
-                        int pdcCount = chunkDataManager.getTickWorthyCount(chunk);
+                        // Check the PDC count for this specific chunk using the new location-based method
+                        int pdcCount = chunkDataManager.getTickWorthyBlocksCount(chunk);
 
                         if (pdcCount == 0) {
                             // This chunk is in our force-load list, but its PDC shows 0 tick-worthy blocks.
                             // It should no longer be force-loaded by our plugin.
-                            plugin.getLogger().fine("Consistency check: Removing chunk " + coord.toString() + " in " + worldName + " from force-load list (PDC count is 0)."); // FINE level
+                            plugin.getLogger().fine("Consistency check: Removing chunk " + coord.toString() + " in " + worldName + " from force-load list (PDC block locations count is 0)."); // FINE level
                             // Remove from the actual live map used by the manager.
                             // This also sets dataDirty and calls setForceLoaded(false) on the main thread.
                             removeChunkFromForceLoad(world, coord.getX(), coord.getZ());

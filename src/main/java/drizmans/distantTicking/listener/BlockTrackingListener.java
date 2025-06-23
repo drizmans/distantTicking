@@ -3,6 +3,7 @@ package drizmans.distantTicking.listener;
 import drizmans.distantTicking.DistantTicking;
 import drizmans.distantTicking.manager.ChunkDataManager;
 import drizmans.distantTicking.manager.ForceLoadManager;
+import drizmans.distantTicking.util.BlockCoord; // Import the new BlockCoord
 import drizmans.distantTicking.util.TickWorthyBlocks;
 import org.bukkit.block.Block;
 import org.bukkit.Chunk;
@@ -14,6 +15,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
+
+import java.util.Set;
 
 public class BlockTrackingListener implements Listener {
 
@@ -35,7 +38,7 @@ public class BlockTrackingListener implements Listener {
 
     /**
      * Handles block placement events.
-     * If a tick-worthy block is placed, increments its count in the chunk's PDC
+     * If a tick-worthy block is placed, adds its location to the chunk's PDC
      * and adds the chunk to the force-load manager if it's the first such block.
      * @param event The BlockPlaceEvent.
      */
@@ -44,29 +47,32 @@ public class BlockTrackingListener implements Listener {
         Block block = event.getBlock();
         if (TickWorthyBlocks.isTickWorthy(block.getType())) {
             Chunk chunk = block.getChunk();
-            int newCount = chunkDataManager.incrementTickWorthyCount(chunk);
+            BlockCoord blockCoord = new BlockCoord(block.getX() & 0xF, block.getY(), block.getZ() & 0xF); // Use chunk-relative X,Z
 
-            // If count goes from 0 to 1, this chunk now needs to be force-loaded
-            if (newCount == 1) {
-                forceLoadManager.addChunkToForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
+            Set<BlockCoord> currentTickWorthyBlocks = chunkDataManager.getTickWorthyBlocks(chunk);
+            boolean wasEmpty = currentTickWorthyBlocks.isEmpty();
+
+            if (chunkDataManager.addTickWorthyBlock(chunk, blockCoord)) { // addTickWorthyBlock returns true if added
+                // If the set was empty before adding this block, the chunk now needs to be force-loaded
+                if (wasEmpty) {
+                    forceLoadManager.addChunkToForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
+                }
+                plugin.getLogger().fine("Placed tick-worthy block at " + block.getLocation() + ". Chunk now tracks " + (currentTickWorthyBlocks.size() + 1) + " blocks.");
             }
-            // Changed to FINE level for debug only
-            plugin.getLogger().fine("Placed tick-worthy block at " + block.getLocation() + ". Chunk count: " + newCount);
         }
     }
 
     /**
      * Handles block break events.
-     * If a tick-worthy block is broken, decrements its count in the chunk's PDC
+     * If a tick-worthy block is broken, removes its location from the chunk's PDC
      * and removes the chunk from the force-load manager if it's the last such block.
      * @param event The BlockBreakEvent.
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
-        // Check if the block *was* tick-worthy before it was broken
-        // This is a simplification; ideally, you might have stored its location in PDC
-        // For now, if current type is tick-worthy, assume it was one we tracked.
+        // For accurate tracking, we assume the block was tick-worthy if its type matches,
+        // and we attempt to remove its exact location.
         if (TickWorthyBlocks.isTickWorthy(block.getType())) {
             handleBlockRemoval(block);
         }
@@ -101,25 +107,29 @@ public class BlockTrackingListener implements Listener {
 
     /**
      * Helper method to centralize logic for handling tick-worthy block removal.
-     * Decrements the count in the chunk's PDC and potentially removes the chunk
+     * Removes the block's location from the chunk's PDC and potentially removes the chunk
      * from force-loading if no tick-worthy blocks remain.
      * @param block The block that was removed.
      */
     private void handleBlockRemoval(Block block) {
         Chunk chunk = block.getChunk();
-        int newCount = chunkDataManager.decrementTickWorthyCount(chunk);
+        BlockCoord blockCoord = new BlockCoord(block.getX() & 0xF, block.getY(), block.getZ() & 0xF); // Use chunk-relative X,Z
 
-        // If count goes from 1 to 0, this chunk no longer needs to be force-loaded
-        if (newCount == 0) {
-            forceLoadManager.removeChunkFromForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
+        Set<BlockCoord> currentTickWorthyBlocks = chunkDataManager.getTickWorthyBlocks(chunk);
+        boolean wasNonEmpty = !currentTickWorthyBlocks.isEmpty();
+
+        if (chunkDataManager.removeTickWorthyBlock(chunk, blockCoord)) { // removeTickWorthyBlock returns true if removed
+            // If the set becomes empty after removing this block, the chunk no longer needs to be force-loaded
+            if (wasNonEmpty && chunkDataManager.getTickWorthyBlocks(chunk).isEmpty()) {
+                forceLoadManager.removeChunkFromForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
+            }
+            plugin.getLogger().fine("Removed tick-worthy block at " + block.getLocation() + ". Chunk now tracks " + chunkDataManager.getTickWorthyBlocksCount(chunk) + " blocks.");
         }
-        // Changed to FINE level for debug only
-        plugin.getLogger().fine("Removed tick-worthy block at " + block.getLocation() + ". Chunk count: " + newCount);
     }
 
     /**
      * Handles chunk load events.
-     * When a chunk loads, it checks its PDC to see if it contains tick-worthy blocks.
+     * When a chunk loads, it checks its PDC to see if it contains any stored tick-worthy block locations.
      * If so, it re-asserts its force-load status in the ForceLoadManager.
      * This is crucial for persistence across server restarts/reloads.
      * @param event The ChunkLoadEvent.
@@ -127,15 +137,16 @@ public class BlockTrackingListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR) // MONITOR is good for observing loaded chunks
     public void onChunkLoad(ChunkLoadEvent event) {
         Chunk chunk = event.getChunk();
-        int tickWorthyCount = chunkDataManager.getTickWorthyCount(chunk);
+        int tickWorthyBlocksCount = chunkDataManager.getTickWorthyBlocksCount(chunk);
 
-        if (tickWorthyCount > 0) {
+        if (tickWorthyBlocksCount > 0) {
             // Re-assert the force-load status for this chunk based on its PDC data
             // This is crucial for persistence across server restarts/reloads.
             // addChunkToForceLoad handles the setForceLoaded(true) call.
             forceLoadManager.addChunkToForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
-            // Changed to FINE level for debug only
-            plugin.getLogger().fine("Re-asserting force-load for chunk " + chunk.getX() + "," + chunk.getZ() + " in " + chunk.getWorld().getName() + " (count: " + tickWorthyCount + ")");
+            plugin.getLogger().fine("Re-asserting force-load for chunk " + chunk.getX() + "," + chunk.getZ() + " in " + chunk.getWorld().getName() + " (tracks: " + tickWorthyBlocksCount + " blocks)");
         }
+        // During transition, also attempt to clean up old PDC key if present
+        chunkDataManager.removeOldPdcKey(chunk);
     }
 }
