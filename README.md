@@ -6,6 +6,8 @@ DistantTicking is a powerful PaperMC plugin designed to enhance your server's pe
 
 Traditionally, Minecraft only "ticks" chunks within a player's `simulation-distance`. This means complex machines and farms stop working when players move too far away or log off. DistantTicking solves this by intelligently detecting and permanently loading chunks that contain player-placed "tick-worthy" blocks by tracking their **exact locations**.
 
+[![Watch the video](https://img.youtube.com/vi/PBmrIrpQiUU/maxresdefault.jpg)](https://youtu.be/PBmrIrpQiUU)
+
 ## ✨ Features
 
 - **Intelligent Chunk Loading:** Automatically detects and force-loads chunks by tracking the **specific locations** of player-placed blocks (e.g., Furnaces, Hoppers, Redstone, Pistons, Rails).
