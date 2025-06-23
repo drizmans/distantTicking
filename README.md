@@ -66,44 +66,7 @@ settings:
 # allowing them to function continuously if they are part of an active redstone circuit.
 #
 tick-worthy-blocks:
-  # --- Existing Block Entities (TileEntities) ---
-  - FURNACE
-  - BLAST_FURNACE
-  - SMOKER
-  - HOPPER
-  - DISPENSER
-  - DROPPER
-  - BREWING_STAND
-  - BEACON
-  - JUKEBOX
-  - COMPARATOR
-  - LECTERN
-  - DAYLIGHT_DETECTOR
-  - CONDUIT
-  - COMMAND_BLOCK
-  - CHAIN_COMMAND_BLOCK
-  - REPEATING_COMMAND_BLOCK
-  - SPAWNER
-  - REPEATER
-  - REDSTONE_WIRE
-  - PISTON
-  - STICKY_PISTON
-  - REDSTONE_TORCH
-  - REDSTONE_WALL_TORCH
-  - LEVER
-  - STONE_BUTTON
-  - WOODEN_BUTTON
-  - STONE_PRESSURE_PLATE
-  - WOODEN_PRESSURE_PLATE
-  - LIGHT_WEIGHTED_PRESSURE_PLATE
-  - HEAVY_WEIGHTED_PRESSURE_PLATE
-  - TRIPWIRE_HOOK
-  - OBSERVER
-  - TARGET
-  - RAIL
-  - POWERED_RAIL
-  - DETECTOR_RAIL
-  - ACTIVATOR_RAIL
+  - Blocks you want to tick
 
 # Suggestion for server owners:
 # For optimal performance, consider lowering your server's 'simulation-distance' in server.properties
