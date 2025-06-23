@@ -5,24 +5,33 @@ import drizmans.distantTicking.manager.ChunkDataManager;
 import drizmans.distantTicking.manager.ForceLoadManager;
 import drizmans.distantTicking.config.PluginConfig;
 import drizmans.distantTicking.util.ChunkCoord;
+import drizmans.distantTicking.util.TickWorthyBlocks; // Needed for scanning blocks
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.Material; // For block iteration
+import org.bukkit.block.Block; // For block iteration
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import java.util.List;
-
+import org.bukkit.scheduler.BukkitRunnable; // For async tasks
 import java.util.Map;
 import java.util.Set;
+import java.util.List;
+import java.util.ArrayList; // For chunk coordinates to scan
+import java.util.concurrent.ConcurrentHashMap; // For thread-safe tracking during scan
 import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger; // For atomic counters in async task
+
 
 public class DistantTickingCommand implements CommandExecutor {
 
     private final DistantTicking plugin;
     private final ChunkDataManager chunkDataManager;
     private final ForceLoadManager forceLoadManager;
-    private final PluginConfig pluginConfig; // Added PluginConfig reference
+    private final PluginConfig pluginConfig;
 
     // Constructor to inject dependencies
     public DistantTickingCommand(DistantTicking plugin, ChunkDataManager chunkDataManager, ForceLoadManager forceLoadManager, PluginConfig pluginConfig) {
@@ -63,6 +72,8 @@ public class DistantTickingCommand implements CommandExecutor {
                 return handleRemoveHereCommand(sender);
             case "reload":
                 return handleReloadCommand(sender);
+            case "refresh": // New refresh command
+                return handleRefreshCommand(sender, args);
             default:
                 sender.sendMessage(ChatColor.RED + "Unknown subcommand: " + subCommand + ". Use /dt help.");
                 return true;
@@ -75,6 +86,9 @@ public class DistantTickingCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/dt status" + ChatColor.GRAY + " - Show current plugin status.");
         sender.sendMessage(ChatColor.YELLOW + "/dt list [page]" + ChatColor.GRAY + " - List all force-loaded chunks by the plugin.");
         sender.sendMessage(ChatColor.YELLOW + "/dt removehere" + ChatColor.GRAY + " - Remove the chunk you are in from the force-load list.");
+        if (sender.hasPermission("distantticking.command.refresh")) { // Add refresh help if they have permission
+            sender.sendMessage(ChatColor.YELLOW + "/dt refresh <radius>" + ChatColor.GRAY + " - Scans a radius of chunks and refreshes their tick-worthy block counts.");
+        }
         if (sender.hasPermission("distantticking.command.reload")) {
             sender.sendMessage(ChatColor.YELLOW + "/dt reload" + ChatColor.GRAY + " - Reload the plugin's configuration.");
         }
@@ -186,12 +200,143 @@ public class DistantTickingCommand implements CommandExecutor {
         pluginConfig.loadConfig();
 
         // Stop and restart tasks with new intervals
-        forceLoadManager.stopAutoSaveTask(); // Will need to add this method in ForceLoadManager
+        forceLoadManager.stopAutoSaveTask();
         forceLoadManager.stopConsistencyCheckTask();
         forceLoadManager.startAutoSaveTask(pluginConfig.getAutoSaveIntervalMinutes());
         forceLoadManager.startConsistencyCheckTask(pluginConfig.getConsistencyCheckIntervalHours());
 
         sender.sendMessage(ChatColor.GREEN + "DistantTicking configuration reloaded!");
+        return true;
+    }
+
+    // --- NEW REFRESH COMMAND LOGIC ---
+    private boolean handleRefreshCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(ChatColor.RED + "This command can only be run by a player.");
+            return true;
+        }
+        if (!sender.hasPermission("distantticking.command.refresh")) {
+            sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+            return true;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(ChatColor.RED + "Usage: /dt refresh <radius>");
+            return true;
+        }
+
+        Player player = (Player) sender;
+        int radius;
+        try {
+            radius = Integer.parseInt(args[1]);
+            if (radius < 0 || radius > 50) { // Limit max radius to prevent server crash
+                sender.sendMessage(ChatColor.RED + "Radius must be between 0 and 50 chunks.");
+                return true;
+            }
+        } catch (NumberFormatException e) {
+            sender.sendMessage(ChatColor.RED + "Invalid radius. Please enter a whole number.");
+            return true;
+        }
+
+        final int finalRadius = radius;
+        final World world = player.getWorld();
+        final int playerChunkX = player.getLocation().getChunk().getX();
+        final int playerChunkZ = player.getLocation().getChunk().getZ();
+        final int playerY = player.getLocation().getBlockY();
+        final int verticalLayers = 10; // 10 blocks above and 10 blocks below player Y
+
+        sender.sendMessage(ChatColor.AQUA + "Starting chunk refresh scan for a " + (finalRadius * 2 + 1) + "x" + (finalRadius * 2 + 1) + " chunk area around you...");
+        sender.sendMessage(ChatColor.YELLOW + "This may take a moment. Progress will be reported.");
+
+        new BukkitRunnable() {
+            int chunksScanned = 0;
+            AtomicInteger totalBlocksCounted = new AtomicInteger(0);
+            AtomicInteger chunksForceLoaded = new AtomicInteger(0);
+            AtomicInteger chunksUnforceLoaded = new AtomicInteger(0);
+            long startTime = System.currentTimeMillis();
+
+            @Override
+            public void run() {
+                // Calculate chunk boundaries
+                int minChunkX = playerChunkX - finalRadius;
+                int maxChunkX = playerChunkX + finalRadius;
+                int minChunkZ = playerChunkZ - finalRadius;
+                int maxChunkZ = playerChunkZ + finalRadius;
+
+                // Calculate vertical boundaries, clamp to world limits
+                int minY = Math.max(world.getMinHeight(), playerY - verticalLayers);
+                int maxY = Math.min(world.getMaxHeight() - 1, playerY + verticalLayers); // -1 to account for 0-indexed Y
+
+                // Use a map to store current chunk counts before update, if needed for comparison
+                // Or just update directly as per requirement
+
+                for (int x = minChunkX; x <= maxChunkX; x++) {
+                    for (int z = minChunkZ; z <= maxChunkZ; z++) {
+                        // Periodically yield to ensure the server doesn't freeze
+                        if (this.isCancelled()) { // Check if task was cancelled mid-run
+                            return;
+                        }
+                        if (chunksScanned % 5 == 0 && chunksScanned > 0) { // Report every 5 chunks scanned
+                            sender.sendMessage(ChatColor.GRAY + "Scanned " + chunksScanned + " chunks so far...");
+                        }
+
+                        Chunk chunk = world.getChunkAt(x, z);
+                        // Ensure the chunk is loaded. getChunkAt usually loads it, but this is explicit.
+                        // For a refresh, we NEED the chunk to be loaded to read its blocks.
+                        // Calling chunk.load() here is required if the chunk is not already loaded by players.
+                        if (!chunk.isLoaded()) {
+                            // Load synchronously from async thread (this is safe as it's not the main thread)
+                            chunk.load(true);
+                        }
+
+                        int currentChunkTickWorthyBlocks = 0;
+                        for (int blockX = 0; blockX < 16; blockX++) {
+                            for (int blockZ = 0; blockZ < 16; blockZ++) {
+                                for (int blockY = minY; blockY <= maxY; blockY++) {
+                                    Block block = chunk.getBlock(blockX, blockY, blockZ);
+                                    if (TickWorthyBlocks.isTickWorthy(block.getType())) {
+                                        currentChunkTickWorthyBlocks++;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Update PDC for this chunk
+                        int oldPdcCount = chunkDataManager.getTickWorthyCount(chunk); // Get current PDC count before setting
+                        chunkDataManager.setTickWorthyCount(chunk, currentChunkTickWorthyBlocks);
+                        totalBlocksCounted.addAndGet(currentChunkTickWorthyBlocks);
+
+                        // Update force-load status
+                        if (currentChunkTickWorthyBlocks > 0 && oldPdcCount == 0) {
+                            forceLoadManager.addChunkToForceLoad(world, chunk.getX(), chunk.getZ());
+                            chunksForceLoaded.incrementAndGet();
+                        } else if (currentChunkTickWorthyBlocks == 0 && oldPdcCount > 0) {
+                            forceLoadManager.removeChunkFromForceLoad(world, chunk.getX(), chunk.getZ());
+                            chunksUnforceLoaded.incrementAndGet();
+                        }
+                        // If count is >0 and was already >0, no change needed for force-load
+                        // If count is 0 and was already 0, no change needed for force-load
+
+                        chunksScanned++;
+                    }
+                }
+
+                // Final report (on main thread, after loop completes)
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        long duration = (System.currentTimeMillis() - startTime) / 1000;
+                        sender.sendMessage(ChatColor.AQUA + "--- DistantTicking Scan Complete ---");
+                        sender.sendMessage(ChatColor.GREEN + "Scanned " + chunksScanned + " chunks.");
+                        sender.sendMessage(ChatColor.GREEN + "Total tick-worthy blocks identified: " + totalBlocksCounted.get());
+                        sender.sendMessage(ChatColor.GREEN + "Chunks newly force-loaded: " + chunksForceLoaded.get());
+                        sender.sendMessage(ChatColor.GREEN + "Chunks un-force-loaded: " + chunksUnforceLoaded.get());
+                        sender.sendMessage(ChatColor.GREEN + "Duration: " + duration + " seconds.");
+                        sender.sendMessage(ChatColor.AQUA + "---------------------------------");
+                    }
+                }.runTask(plugin); // Run on main thread
+            }
+        }.runTaskAsynchronously(plugin); // Start the task asynchronously
+
         return true;
     }
 }

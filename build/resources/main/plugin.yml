@@ -29,3 +29,6 @@ permissions:
   distantticking.command.reload:
     description: Allows reloading the plugin's configuration.
     default: op
+  distantticking.command.refresh:
+    description: Allows running the chunk refresh scan.
+    default: op
