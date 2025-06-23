@@ -3,7 +3,7 @@ package drizmans.distantTicking.command;
 import drizmans.distantTicking.DistantTicking;
 import drizmans.distantTicking.manager.ChunkDataManager;
 import drizmans.distantTicking.manager.ForceLoadManager;
-import drizmans.distantTicking.config.PluginConfig; // Import PluginConfig
+import drizmans.distantTicking.config.PluginConfig;
 import drizmans.distantTicking.util.ChunkCoord;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;

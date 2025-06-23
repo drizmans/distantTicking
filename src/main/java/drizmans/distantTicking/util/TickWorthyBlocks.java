@@ -1,8 +1,8 @@
 package drizmans.distantTicking.util;
 
-import drizmans.distantTicking.config.PluginConfig; // Import PluginConfig
+import drizmans.distantTicking.config.PluginConfig;
 import org.bukkit.Material;
-import java.util.Collections; // For unmodifiable set
+import java.util.Collections;
 import java.util.Set;
 
 public class TickWorthyBlocks {

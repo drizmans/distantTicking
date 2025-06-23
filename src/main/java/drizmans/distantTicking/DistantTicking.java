@@ -13,12 +13,10 @@ import org.bukkit.Chunk;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
-import java.util.logging.ConsoleHandler; // Import ConsoleHandler
-import java.util.logging.Handler;        // Import Handler
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
 import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.logging.Formatter;      // Import Formatter
-import java.util.logging.SimpleFormatter; // Import SimpleFormatter
+import java.util.logging.SimpleFormatter;
 
 
 public final class DistantTicking extends JavaPlugin {
