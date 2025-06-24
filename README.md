@@ -40,6 +40,7 @@ This approach provides precise tracking, reliable persistence, and efficient res
 3.  Restart your PaperMC server.
 4.  A `DistantTicking` folder will be created in your `plugins/` directory, containing `config.yml` and `active_chunks.json`.
 5.  IMPORTANT! If you add this to an existing world, you will want to run `/dt refresh <chunk radius> <vertical-up> <vertical-down>` to populate the new location-based tracking data for existing blocks. I advise doing this surgically, with a low chunk radius and appropriate vertical limits, as scanning many chunks or large vertical ranges can be slow.
+> You may want to run /dt cleanup after updating, in case I've changed anything.
 
 ## 🛠️ Configuration (`config.yml`)
 
