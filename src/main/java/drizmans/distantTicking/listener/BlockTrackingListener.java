@@ -3,7 +3,7 @@ package drizmans.distantTicking.listener;
 import drizmans.distantTicking.DistantTicking;
 import drizmans.distantTicking.manager.ChunkDataManager;
 import drizmans.distantTicking.manager.ForceLoadManager;
-import drizmans.distantTicking.util.BlockCoord; // Import the new BlockCoord
+import drizmans.distantTicking.util.BlockCoord;
 import drizmans.distantTicking.util.TickWorthyBlocks;
 import org.bukkit.block.Block;
 import org.bukkit.Chunk;

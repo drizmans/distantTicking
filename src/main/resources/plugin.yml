@@ -32,3 +32,9 @@ permissions:
   distantticking.command.refresh:
     description: Allows running the chunk refresh scan.
     default: op
+  distantticking.command.cleanup:
+    description: Allows use of the /dt cleanup command to remove old PDC keys.
+    default: op
+  distantticking.command.check: # New permission for the /dt check command
+    description: Allows use of the /dt check command to manually run a detailed consistency check.
+    default: op

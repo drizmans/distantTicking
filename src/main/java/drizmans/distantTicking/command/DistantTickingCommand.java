@@ -3,23 +3,24 @@ package drizmans.distantTicking.command;
 import drizmans.distantTicking.DistantTicking;
 import drizmans.distantTicking.manager.ChunkDataManager;
 import drizmans.distantTicking.manager.ForceLoadManager;
+import drizmans.distantTicking.manager.ConsistencyCheckResult;
 import drizmans.distantTicking.config.PluginConfig;
 import drizmans.distantTicking.util.ChunkCoord;
-import drizmans.distantTicking.util.BlockCoord; // Import the new BlockCoord
-import drizmans.distantTicking.util.TickWorthyBlocks; // Needed for scanning blocks
+import drizmans.distantTicking.util.BlockCoord;
+import drizmans.distantTicking.util.TickWorthyBlocks;
 import org.bukkit.*;
-import org.bukkit.block.Block; // For block iteration
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable; // For async tasks
+import org.bukkit.scheduler.BukkitRunnable;
 import java.util.Map;
 import java.util.Set;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap; // For thread-safe tracking during scan
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.concurrent.atomic.AtomicInteger; // For atomic counters in async task
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class DistantTickingCommand implements CommandExecutor {
@@ -29,7 +30,6 @@ public class DistantTickingCommand implements CommandExecutor {
     private final ForceLoadManager forceLoadManager;
     private final PluginConfig pluginConfig;
 
-    // Constructor to inject dependencies
     public DistantTickingCommand(DistantTicking plugin, ChunkDataManager chunkDataManager, ForceLoadManager forceLoadManager, PluginConfig pluginConfig) {
         this.plugin = plugin;
         this.chunkDataManager = chunkDataManager;
@@ -39,7 +39,6 @@ public class DistantTickingCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        // Base command check (e.g., just /dt)
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             sendHelpMessage(sender);
             return true;
@@ -53,7 +52,6 @@ public class DistantTickingCommand implements CommandExecutor {
             case "status":
                 return handleStatusCommand(sender);
             case "list":
-                // Handle pagination if desired for very long lists
                 int page = 1;
                 if (args.length > 1) {
                     try {
@@ -68,10 +66,12 @@ public class DistantTickingCommand implements CommandExecutor {
                 return handleRemoveHereCommand(sender);
             case "reload":
                 return handleReloadCommand(sender);
-            case "refresh": // New refresh command
+            case "refresh":
                 return handleRefreshCommand(sender, args);
-            case "cleanup": // New cleanup command
+            case "cleanup":
                 return handleCleanupCommand(sender);
+            case "check": // New command handler
+                return handleCheckCommand(sender);
             default:
                 sender.sendMessage(ChatColor.RED + "Unknown subcommand: " + subCommand + ". Use /dt help.");
                 return true;
@@ -84,12 +84,14 @@ public class DistantTickingCommand implements CommandExecutor {
         sender.sendMessage(ChatColor.YELLOW + "/dt status" + ChatColor.GRAY + " - Show current plugin status.");
         sender.sendMessage(ChatColor.YELLOW + "/dt list [page]" + ChatColor.GRAY + " - List all force-loaded chunks by the plugin.");
         sender.sendMessage(ChatColor.YELLOW + "/dt removehere" + ChatColor.GRAY + " - Remove the chunk you are in from the force-load list.");
-        if (sender.hasPermission("distantticking.command.refresh")) { // Add refresh help if they have permission
-            // Updated refresh command usage
-            sender.sendMessage(ChatColor.YELLOW + "/dt refresh <radius> <vertical-up> <vertical-down>" + ChatColor.GRAY + " - Scans a radius of chunks and refreshes their tick-worthy block counts within a vertical range.");
+        if (sender.hasPermission("distantticking.command.refresh")) {
+            sender.sendMessage(ChatColor.YELLOW + "/dt refresh <radius> <vertical-up> <vertical-down>" + ChatColor.GRAY + " - Scans a cuboid radius of chunks and refreshes their tick-worthy block data within a vertical range.");
         }
-        if (sender.hasPermission("distantticking.command.cleanup")) { // Add cleanup help
+        if (sender.hasPermission("distantticking.command.cleanup")) {
             sender.sendMessage(ChatColor.YELLOW + "/dt cleanup" + ChatColor.GRAY + " - Scans loaded chunks and removes the old tick-worthy block count PDC key.");
+        }
+        if (sender.hasPermission("distantticking.command.check")) { // Add new command to help
+            sender.sendMessage(ChatColor.YELLOW + "/dt check" + ChatColor.GRAY + " - Manually runs a detailed consistency check on all force-loaded chunks.");
         }
         if (sender.hasPermission("distantticking.command.reload")) {
             sender.sendMessage(ChatColor.YELLOW + "/dt reload" + ChatColor.GRAY + " - Reload the plugin's configuration.");
@@ -109,8 +111,8 @@ public class DistantTickingCommand implements CommandExecutor {
 
         Player player = (Player) sender;
         Chunk chunk = player.getLocation().getChunk();
-        int count = chunkDataManager.getTickWorthyBlocksCount(chunk); // Use new count method
-        Set<BlockCoord> blocks = chunkDataManager.getTickWorthyBlocks(chunk); // Get the actual block coords
+        int count = chunkDataManager.getTickWorthyBlocksCount(chunk);
+        Set<BlockCoord> blocks = chunkDataManager.getTickWorthyBlocks(chunk);
 
         sender.sendMessage(ChatColor.AQUA + "PDC Info for Chunk (" + chunk.getX() + ", " + chunk.getZ() + ") in " + chunk.getWorld().getName() + ":");
         sender.sendMessage(ChatColor.YELLOW + "  Tick-worthy blocks tracked by plugin: " + count);
@@ -154,7 +156,6 @@ public class DistantTickingCommand implements CommandExecutor {
             return true;
         }
 
-        // Basic pagination (adjust items per page as needed)
         int itemsPerPage = 10;
         int totalPages = (int) Math.ceil((double) chunkStrings.size() / itemsPerPage);
 
@@ -187,8 +188,7 @@ public class DistantTickingCommand implements CommandExecutor {
         Player player = (Player) sender;
         Chunk chunk = player.getLocation().getChunk();
 
-        // Clear all stored tick-worthy block locations and remove from force-load list
-        chunkDataManager.setTickWorthyBlocks(chunk, null); // Set to null/empty to clear PDC
+        chunkDataManager.setTickWorthyBlocks(chunk, null);
         forceLoadManager.removeChunkFromForceLoad(chunk.getWorld(), chunk.getX(), chunk.getZ());
 
         sender.sendMessage(ChatColor.GREEN + "Chunk (" + chunk.getX() + ", " + chunk.getZ() + ") in " + chunk.getWorld().getName() + " has been cleared of tick-worthy block data and removed from force-load list.");
@@ -202,10 +202,8 @@ public class DistantTickingCommand implements CommandExecutor {
             return true;
         }
 
-        // Reload the configuration
         pluginConfig.loadConfig();
 
-        // Stop and restart tasks with new intervals
         forceLoadManager.stopAutoSaveTask();
         forceLoadManager.stopConsistencyCheckTask();
         forceLoadManager.startAutoSaveTask(pluginConfig.getAutoSaveIntervalMinutes());
@@ -215,7 +213,6 @@ public class DistantTickingCommand implements CommandExecutor {
         return true;
     }
 
-    // --- NEW REFRESH COMMAND LOGIC ---
     private boolean handleRefreshCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) {
             sender.sendMessage(ChatColor.RED + "This command can only be run by a player.");
@@ -225,7 +222,6 @@ public class DistantTickingCommand implements CommandExecutor {
             sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
             return true;
         }
-        // Updated argument length check for radius, vertical-up, vertical-down
         if (args.length < 4) {
             sender.sendMessage(ChatColor.RED + "Usage: /dt refresh <radius> <vertical-up> <vertical-down>");
             return true;
@@ -240,15 +236,15 @@ public class DistantTickingCommand implements CommandExecutor {
             verticalUp = Integer.parseInt(args[2]);
             verticalDown = Integer.parseInt(args[3]);
 
-            if (radius < 0 || radius > 50) { // Limit max radius to prevent server crash
+            if (radius < 0 || radius > 50) {
                 sender.sendMessage(ChatColor.RED + "Radius must be between 0 and 50 chunks.");
                 return true;
             }
-            if (verticalUp < 0 || verticalUp > 256) { // Limit max vertical scan height
+            if (verticalUp < 0 || verticalUp > 256) {
                 sender.sendMessage(ChatColor.RED + "Vertical-up must be between 0 and 256 blocks.");
                 return true;
             }
-            if (verticalDown < 0 || verticalDown > 256) { // Limit max vertical scan height
+            if (verticalDown < 0 || verticalDown > 256) {
                 sender.sendMessage(ChatColor.RED + "Vertical-down must be between 0 and 256 blocks.");
                 return true;
             }
@@ -263,9 +259,8 @@ public class DistantTickingCommand implements CommandExecutor {
         final int playerChunkZ = player.getLocation().getChunk().getZ();
         final int playerY = player.getLocation().getBlockY();
 
-        // Calculate actual scan boundaries, clamping to world limits
         final int minY = Math.max(world.getMinHeight(), playerY - verticalDown);
-        final int maxY = Math.min(world.getMaxHeight() - 1, playerY + verticalUp); // -1 for 0-indexed Y
+        final int maxY = Math.min(world.getMaxHeight() - 1, playerY + verticalUp);
 
 
         sender.sendMessage(ChatColor.AQUA + "Starting chunk refresh scan for a " + (finalRadius * 2 + 1) + "x" + (finalRadius * 2 + 1) + " chunk area...");
@@ -281,7 +276,6 @@ public class DistantTickingCommand implements CommandExecutor {
 
             @Override
             public void run() {
-                // Calculate chunk boundaries
                 int minChunkX = playerChunkX - finalRadius;
                 int maxChunkX = playerChunkX + finalRadius;
                 int minChunkZ = playerChunkZ - finalRadius;
@@ -289,11 +283,10 @@ public class DistantTickingCommand implements CommandExecutor {
 
                 for (int x = minChunkX; x <= maxChunkX; x++) {
                     for (int z = minChunkZ; z <= maxChunkZ; z++) {
-                        // Periodically yield to ensure the server doesn't freeze
                         if (this.isCancelled()) {
                             return;
                         }
-                        if (chunksScanned % 5 == 0 && chunksScanned > 0) { // Report every 5 chunks scanned
+                        if (chunksScanned % 5 == 0 && chunksScanned > 0) {
                             sender.sendMessage(ChatColor.GRAY + "Scanned " + chunksScanned + " chunks so far...");
                         }
 
@@ -389,6 +382,41 @@ public class DistantTickingCommand implements CommandExecutor {
                 }.runTask(plugin);
             }
         }.runTaskAsynchronously(plugin);
+
+        return true;
+    }
+
+    // New command handler for /dt check
+    private boolean handleCheckCommand(CommandSender sender) {
+        if (!sender.hasPermission("distantticking.command.check")) {
+            sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+            return true;
+        }
+
+        // Send initial message
+        sender.sendMessage(ChatColor.AQUA + "Starting manual detailed consistency check... This may take a moment.");
+
+        // Run the check asynchronously
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Perform the actual check logic
+                final ConsistencyCheckResult result = forceLoadManager.performConsistencyCheck();
+
+                // Schedule reporting back to the sender on the main thread
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        sender.sendMessage(ChatColor.GREEN + "--- Detailed Consistency Check Results ---");
+                        sender.sendMessage(ChatColor.YELLOW + "Chunks Checked: " + ChatColor.WHITE + result.getTotalChunksChecked());
+                        sender.sendMessage(ChatColor.YELLOW + "Invalid Block Entries Removed from PDC: " + ChatColor.WHITE + result.getRemovedBlockEntries());
+                        sender.sendMessage(ChatColor.YELLOW + "Chunks Un-force Loaded: " + ChatColor.WHITE + result.getUnforceLoadedChunks());
+                        sender.sendMessage(ChatColor.YELLOW + "Duration: " + ChatColor.WHITE + (result.getDurationMillis() / 1000.0) + " seconds.");
+                        sender.sendMessage(ChatColor.GREEN + "--------------------------------------");
+                    }
+                }.runTask(plugin); // Run on main thread
+            }
+        }.runTaskAsynchronously(plugin); // Run the check itself asynchronously
 
         return true;
     }

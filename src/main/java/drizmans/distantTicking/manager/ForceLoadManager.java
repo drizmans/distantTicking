@@ -4,10 +4,13 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import drizmans.distantTicking.DistantTicking;
+import drizmans.distantTicking.util.BlockCoord;
 import drizmans.distantTicking.util.ChunkCoord;
+import drizmans.distantTicking.util.TickWorthyBlocks;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -56,7 +59,7 @@ public class ForceLoadManager {
      */
     public void loadData() {
         if (!dataFile.exists()) {
-            plugin.getLogger().info("active_chunks.json not found, creating new one."); // This is INFO level as it's important startup info
+            plugin.getLogger().info("active_chunks.json not found, creating new one.");
             plugin.getDataFolder().mkdirs();
             saveData(true);
             return;
@@ -69,9 +72,9 @@ public class ForceLoadManager {
             if (loadedMap != null) {
                 forceLoadedChunks.putAll(loadedMap);
             }
-            plugin.getLogger().info("Loaded " + getTotalForceLoadedChunks() + " force-loaded chunks from active_chunks.json."); // INFO level
+            plugin.getLogger().info("Loaded " + getTotalForceLoadedChunks() + " force-loaded chunks from active_chunks.json.");
         } catch (IOException e) {
-            plugin.getLogger().severe("Failed to load active_chunks.json: " + e.getMessage()); // SEVERE level for errors
+            plugin.getLogger().severe("Failed to load active_chunks.json: " + e.getMessage());
         }
 
         Bukkit.getScheduler().runTask(plugin, () -> {
@@ -80,7 +83,7 @@ public class ForceLoadManager {
                 String worldName = entry.getKey();
                 World world = Bukkit.getWorld(worldName);
                 if (world == null) {
-                    plugin.getLogger().warning("World '" + worldName + "' not found on startup for force loading. Skipping its chunks."); // WARNING level
+                    plugin.getLogger().warning("World '" + worldName + "' not found on startup for force loading. Skipping its chunks.");
                     continue;
                 }
                 for (ChunkCoord coord : entry.getValue()) {
@@ -88,13 +91,13 @@ public class ForceLoadManager {
                         Chunk chunk = world.getChunkAt(coord.getX(), coord.getZ());
                         chunk.setForceLoaded(true);
                         loadedCount++;
-                        plugin.getLogger().fine("Force loaded chunk: " + worldName + " " + coord.toString()); // FINE level for individual chunk load
+                        plugin.getLogger().fine("Force loaded chunk: " + worldName + " " + coord.toString());
                     } catch (Exception e) {
-                        plugin.getLogger().warning("Failed to force load chunk " + coord.toString() + " in world " + worldName + ": " + e.getMessage()); // WARNING level for errors
+                        plugin.getLogger().warning("Failed to force load chunk " + coord.toString() + " in world " + worldName + ": " + e.getMessage());
                     }
                 }
             }
-            plugin.getLogger().info("Initiated force-loading for " + loadedCount + " chunks."); // INFO level
+            plugin.getLogger().info("Initiated force-loading for " + loadedCount + " chunks.");
         });
     }
 
@@ -102,7 +105,7 @@ public class ForceLoadManager {
      * Saves the force-loaded chunk data to active_chunks.json asynchronously.
      */
     public void saveData() {
-        saveData(false); // Default to asynchronous save
+        saveData(false);
     }
 
     /**
@@ -119,9 +122,9 @@ public class ForceLoadManager {
         Runnable saveRunnable = () -> {
             try (FileWriter writer = new FileWriter(dataFile)) {
                 gson.toJson(forceLoadedChunks, writer);
-                plugin.getLogger().info("Saved " + getTotalForceLoadedChunks() + " force-loaded chunks to active_chunks.json."); // INFO level for overall save
+                plugin.getLogger().info("Saved " + getTotalForceLoadedChunks() + " force-loaded chunks to active_chunks.json.");
             } catch (IOException e) {
-                plugin.getLogger().severe("Failed to save active_chunks.json: " + e.getMessage()); // SEVERE level for errors
+                plugin.getLogger().severe("Failed to save active_chunks.json: " + e.getMessage());
             }
         };
 
@@ -153,7 +156,7 @@ public class ForceLoadManager {
                 Chunk chunk = world.getChunkAt(x, z);
                 if (!chunk.isForceLoaded()) {
                     chunk.setForceLoaded(true);
-                    plugin.getLogger().fine("Forcing load on chunk: " + world.getName() + " " + coord); // FINE level
+                    plugin.getLogger().fine("Forcing load on chunk: " + world.getName() + " " + coord);
                 }
             });
         }
@@ -178,7 +181,7 @@ public class ForceLoadManager {
                 Chunk chunk = world.getChunkAt(x, z);
                 if (chunk.isForceLoaded()) {
                     chunk.setForceLoaded(false);
-                    plugin.getLogger().fine("Un-forcing load on chunk: " + world.getName() + " " + coord); // FINE level
+                    plugin.getLogger().fine("Un-forcing load on chunk: " + world.getName() + " " + coord);
                 }
             });
         }
@@ -209,15 +212,13 @@ public class ForceLoadManager {
      * @param intervalMinutes The interval in minutes between saves.
      */
     public void startAutoSaveTask(int intervalMinutes) {
-        // Cancel any existing task to prevent duplicates on reload
         if (autoSaveTask != null && !autoSaveTask.isCancelled()) {
             autoSaveTask.cancel();
         }
-        // Run asynchronously to avoid blocking the main server thread
         autoSaveTask = new BukkitRunnable() {
             @Override
             public void run() {
-                saveData(); // Call the asynchronous save method
+                saveData();
             }
         }.runTaskTimerAsynchronously(plugin, 20 * 60 * intervalMinutes, 20 * 60 * intervalMinutes);
     }
@@ -230,83 +231,29 @@ public class ForceLoadManager {
         if (autoSaveTask != null && !autoSaveTask.isCancelled()) {
             autoSaveTask.cancel();
             autoSaveTask = null;
-            plugin.getLogger().info("Auto-save task stopped."); // INFO level
+            plugin.getLogger().info("Auto-save task stopped.");
         }
     }
 
     /**
-     * Starts a periodic asynchronous task that performs a consistency check.
-     * It iterates through chunks believed to be force-loaded by the plugin
-     * and verifies their actual tick-worthy block count in PDC.
-     * If a chunk has 0 tick-worthy blocks but is in the force-load list, it's removed.
+     * Starts a periodic asynchronous task that performs a detailed consistency check.
+     * It iterates through chunks believed to be force-loaded by the plugin.
+     * For each chunk, it retrieves the stored tick-worthy block locations from PDC.
+     * It then verifies if the block at each stored location still exists and is a tick-worthy type.
+     * Outdated or invalid locations are removed from PDC. If a chunk's PDC becomes empty, it's removed from force-load.
      * @param intervalHours The interval in hours between consistency checks.
      */
     public void startConsistencyCheckTask(int intervalHours) {
-        // Cancel any existing task to prevent duplicates on reload
         if (consistencyCheckTask != null && !consistencyCheckTask.isCancelled()) {
             consistencyCheckTask.cancel();
         }
 
-        // Schedule the new consistency check task
-        // Run asynchronously as it involves file I/O (chunk loading) and data manipulation
         consistencyCheckTask = new BukkitRunnable() {
             @Override
             public void run() {
-                plugin.getLogger().info("Starting periodic consistency check for force-loaded chunks..."); // INFO level
-                int removedCount = 0;
-                int checkedCount = 0;
-
-                // Iterate over a copy of the world names to avoid ConcurrentModificationException
-                // if worlds are unloaded or removed during the check.
-                for (String worldName : new HashSet<>(forceLoadedChunks.keySet())) {
-                    World world = Bukkit.getWorld(worldName);
-                    if (world == null) {
-                        plugin.getLogger().warning("Consistency check: World '" + worldName + "' not found. Removing its entries from force-load list."); // WARNING level
-                        forceLoadedChunks.remove(worldName); // Remove reference to a missing world
-                        dataDirty = true; // Mark dirty if a world was removed
-                        continue;
-                    }
-
-                    // Use an iterator for safe removal from the Set<ChunkCoord> while iterating
-                    // Make a copy to iterate safely if the underlying set changes
-                    Set<ChunkCoord> chunksInWorldCopy = new HashSet<>(forceLoadedChunks.getOrDefault(worldName, Collections.emptySet()));
-                    Iterator<ChunkCoord> iterator = chunksInWorldCopy.iterator();
-
-                    while (iterator.hasNext()) {
-                        ChunkCoord coord = iterator.next();
-                        checkedCount++;
-                        Chunk chunk;
-                        try {
-                            // getChunkAt will load the chunk if it's not already loaded.
-                            // This might be a performance consideration for very large numbers of checks.
-                            chunk = world.getChunkAt(coord.getX(), coord.getZ());
-                        } catch (Exception e) {
-                            plugin.getLogger().warning("Consistency check: Error getting chunk " + coord.toString() + " in world " + worldName + ": " + e.getMessage()); // WARNING level
-                            continue; // Skip this chunk, try again next cycle
-                        }
-
-                        // Check the PDC count for this specific chunk using the new location-based method
-                        int pdcCount = chunkDataManager.getTickWorthyBlocksCount(chunk);
-
-                        if (pdcCount == 0) {
-                            // This chunk is in our force-load list, but its PDC shows 0 tick-worthy blocks.
-                            // It should no longer be force-loaded by our plugin.
-                            plugin.getLogger().fine("Consistency check: Removing chunk " + coord.toString() + " in " + worldName + " from force-load list (PDC block locations count is 0)."); // FINE level
-                            // Remove from the actual live map used by the manager.
-                            // This also sets dataDirty and calls setForceLoaded(false) on the main thread.
-                            removeChunkFromForceLoad(world, coord.getX(), coord.getZ());
-                            removedCount++;
-                        }
-                    }
-                    // After iterating all chunks for a world, if its set became empty, remove the world entry
-                    if (forceLoadedChunks.get(worldName) != null && forceLoadedChunks.get(worldName).isEmpty()) {
-                        forceLoadedChunks.remove(worldName);
-                        dataDirty = true;
-                    }
-                }
-                plugin.getLogger().info("Consistency check finished. Checked " + checkedCount + " chunks, removed " + removedCount + " outdated entries."); // INFO level
-                // Ensure changes are saved after the consistency check
-                saveData();
+                // Call the encapsulated check logic
+                ConsistencyCheckResult result = performConsistencyCheck();
+                plugin.getLogger().info("Detailed consistency check finished. Checked " + result.getTotalChunksChecked() + " chunks. Removed " + result.getRemovedBlockEntries() + " outdated block entries and un-force loaded " + result.getUnforceLoadedChunks() + " chunks. Duration: " + (result.getDurationMillis() / 1000.0) + " seconds.");
             }
         }.runTaskTimerAsynchronously(plugin, 20 * 60 * 60, 20 * 60 * 60 * intervalHours); // Run every `intervalHours`
     }
@@ -319,7 +266,82 @@ public class ForceLoadManager {
         if (consistencyCheckTask != null && !consistencyCheckTask.isCancelled()) {
             consistencyCheckTask.cancel();
             consistencyCheckTask = null;
-            plugin.getLogger().info("Consistency check task stopped."); // INFO level
+            plugin.getLogger().info("Consistency check task stopped.");
         }
+    }
+
+    /**
+     * Performs the detailed consistency check and returns the results.
+     * This method contains the core logic for checking block validity.
+     * @return A ConsistencyCheckResult object containing metrics of the check.
+     */
+    public ConsistencyCheckResult performConsistencyCheck() { // Made public for direct calling by command
+        long startTime = System.currentTimeMillis();
+        int removedEntriesCount = 0; // Number of individual block entries removed from PDC
+        int unforceLoadedChunksCount = 0; // Number of chunks fully unforce-loaded
+        int totalChunksChecked = 0; // Total chunks processed by this check
+
+        for (String worldName : new HashSet<>(forceLoadedChunks.keySet())) {
+            World world = Bukkit.getWorld(worldName);
+            if (world == null) {
+                plugin.getLogger().warning("Consistency check: World '" + worldName + "' not found. Removing its entries from force-load list.");
+                forceLoadedChunks.remove(worldName);
+                dataDirty = true;
+                continue;
+            }
+
+            Set<ChunkCoord> chunksInWorldCopy = new HashSet<>(forceLoadedChunks.getOrDefault(worldName, Collections.emptySet()));
+            Iterator<ChunkCoord> iterator = chunksInWorldCopy.iterator();
+
+            while (iterator.hasNext()) {
+                ChunkCoord coord = iterator.next();
+                totalChunksChecked++; // Increment total chunks checked
+                Chunk chunk;
+                try {
+                    // getChunkAt will load the chunk if it's not already loaded.
+                    chunk = world.getChunkAt(coord.getX(), coord.getZ());
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Consistency check: Error getting chunk " + coord.toString() + " in world " + worldName + ": " + e.getMessage());
+                    continue;
+                }
+
+                Set<BlockCoord> trackedBlocks = chunkDataManager.getTickWorthyBlocks(chunk);
+                Set<BlockCoord> validatedBlocks = ConcurrentHashMap.newKeySet();
+
+                int originalTrackedCount = trackedBlocks.size();
+                for (BlockCoord blockCoord : trackedBlocks) {
+                    try {
+                        Block block = chunk.getBlock(blockCoord.getX(), blockCoord.getY(), blockCoord.getZ());
+                        if (block != null && !block.getType().isAir() && TickWorthyBlocks.isTickWorthy(block.getType())) {
+                            validatedBlocks.add(blockCoord);
+                        } else {
+                            plugin.getLogger().fine("Consistency check: Block at " + block.getLocation() + " in " + chunk.getWorld().getName() + " is no longer tick-worthy or missing. Removing from PDC.");
+                        }
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Consistency check: Error checking block at " + blockCoord.toString() + " in chunk " + coord.toString() + " in world " + worldName + ": " + e.getMessage());
+                    }
+                }
+
+                if (validatedBlocks.size() != originalTrackedCount) {
+                    chunkDataManager.setTickWorthyBlocks(chunk, validatedBlocks);
+                    removedEntriesCount += (originalTrackedCount - validatedBlocks.size());
+                    dataDirty = true;
+                }
+
+                if (validatedBlocks.isEmpty()) {
+                    plugin.getLogger().fine("Consistency check: Removing chunk " + coord.toString() + " in " + worldName + " from force-load list (PDC block locations count is now 0).");
+                    removeChunkFromForceLoad(world, coord.getX(), coord.getZ());
+                    unforceLoadedChunksCount++;
+                }
+            }
+            if (forceLoadedChunks.get(worldName) != null && forceLoadedChunks.get(worldName).isEmpty()) {
+                forceLoadedChunks.remove(worldName);
+                dataDirty = true;
+            }
+        }
+        saveData();
+
+        long duration = System.currentTimeMillis() - startTime;
+        return new ConsistencyCheckResult(totalChunksChecked, removedEntriesCount, unforceLoadedChunksCount, duration);
     }
 }

@@ -8,7 +8,7 @@ import drizmans.distantTicking.util.BlockCoord;
 import org.bukkit.Chunk;
 import org.bukkit.NamespacedKey;
 import org.bukkit.persistence.PersistentDataContainer;
-import org.bukkit.persistence.PersistentDataAdapterContext; // Import this
+import org.bukkit.persistence.PersistentDataAdapterContext;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.lang.reflect.Type;
