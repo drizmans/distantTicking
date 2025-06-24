@@ -90,14 +90,5 @@ All commands start with `/dt` (or `/distantticking`).
 | `/dt removehere`                                     | Removes the chunk you are standing in from the force-load list.                                                                                                            | `distantticking.command.removehere` |
 | `/dt reload`                                         | Reloads the plugin's `config.yml` and restarts internal tasks.                                                                                                             | `distantticking.command.reload`     |
 | `/dt refresh <radius> <vertical-up> <vertical-down>` | Scans a square area of chunks defined by the <radius> argument, and clamped by the vertical up and down args to prevent detecting unwanted map structures (eg mineshafts.) | `distantticking.command.refresh`    |
-
-## 🔑 Permissions
-
-All permissions default to `op`.
-
-- `distantticking.command.base`
-- `distantticking.command.pdcinfo`
-- `distantticking.command.status`
-- `distantticking.command.list`
-- `distantticking.command.removehere`
-- `distantticking.command.reload`
+| `/dt cleanup`                                        | Cleans up old PDC keys used before tracking was block specific.                                                                                                            | `distantticking.command.cleanup`    |
+| `/dt check`                                          | Performs a consistency check and tells you how long it took to run. This is meant to be more of a profiling tool than actually used, since these checks run automatically. | `distantticking.command.cleanup`    |
