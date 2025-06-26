@@ -33,6 +33,10 @@ DistantTicking operates on a hybrid data storage model:
 
 This approach provides precise tracking, reliable persistence, and efficient resource management.
 
+## Known Bugs
+
+- If you track crops, it won’t detect them being broken if you jump on them.
+
 ## 📥 Installation
 
 1.  Download the latest `DistantTicking-X.Y.Z.jar` from the build/libs folder.
