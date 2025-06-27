@@ -15,6 +15,10 @@ public class PluginConfig {
     private int consistencyCheckIntervalHours;
     private boolean debugMode;
     private Set<Material> tickWorthyMaterials;
+    private boolean hibernationEnabled;
+    private int unloadDelayMinutes;
+    private int reloadChunksPerBatch;
+    private int reloadStaggerTicks;
 
     /**
      * Constructor for PluginConfig. Loads configuration values from config.yml.
@@ -35,6 +39,10 @@ public class PluginConfig {
         this.autoSaveIntervalMinutes = plugin.getConfig().getInt("settings.auto-save-interval-minutes", 5);
         this.consistencyCheckIntervalHours = plugin.getConfig().getInt("settings.consistency-check-interval-hours", 6);
         this.debugMode = plugin.getConfig().getBoolean("settings.debug-mode", false);
+        this.hibernationEnabled = plugin.getConfig().getBoolean("hibernation.enabled", true);
+        this.unloadDelayMinutes = plugin.getConfig().getInt("hibernation.unload-delay-minutes", 60);
+        this.reloadChunksPerBatch = plugin.getConfig().getInt("hibernation.reload-chunks-per-batch", 5);
+        this.reloadStaggerTicks = plugin.getConfig().getInt("hibernation.reload-stagger-ticks", 5);
 
         // Load tick-worthy materials
         List<String> materialNames = plugin.getConfig().getStringList("tick-worthy-blocks");
@@ -91,4 +99,11 @@ public class PluginConfig {
     public Level getLoggingLevel() {
         return debugMode ? Level.FINE : Level.INFO;
     }
+
+    // Hibernation Getters
+    public boolean isHibernationEnabled() { return hibernationEnabled; }
+    public int getUnloadDelayMinutes() { return unloadDelayMinutes; }
+    public int getReloadChunksPerBatch() { return reloadChunksPerBatch; }
+    public int getReloadStaggerTicks() { return reloadStaggerTicks; }
+
 }

@@ -7,6 +7,7 @@ import drizmans.distantTicking.DistantTicking;
 import drizmans.distantTicking.util.BlockCoord;
 import drizmans.distantTicking.util.ChunkCoord;
 import drizmans.distantTicking.util.TickWorthyBlocks;
+import drizmans.distantTicking.config.PluginConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.World;
@@ -39,6 +40,11 @@ public class ForceLoadManager {
     private BukkitTask consistencyCheckTask;
     private BukkitTask autoSaveTask;
 
+    private final Map<String, Set<ChunkCoord>> hibernatingChunks = new ConcurrentHashMap<>();
+    private BukkitTask unloadTask = null;
+    private BukkitTask reloadTask = null;
+
+
     /**
      * Constructor for the ForceLoadManager.
      * @param plugin The main plugin instance.
@@ -66,12 +72,36 @@ public class ForceLoadManager {
         }
 
         try (FileReader reader = new FileReader(dataFile)) {
-            Type type = new TypeToken<Map<String, HashSet<ChunkCoord>>>(){}.getType();
-            Map<String, HashSet<ChunkCoord>> loadedMap = gson.fromJson(reader, type);
+            Type type = new TypeToken<Map<String, Set<ChunkCoord>>>() {}.getType();
+            Map<String, Set<ChunkCoord>> loadedChunks = gson.fromJson(reader, type);
 
-            if (loadedMap != null) {
-                forceLoadedChunks.putAll(loadedMap);
+            if (loadedChunks == null || loadedChunks.isEmpty()) {
+                return;
             }
+
+            // --- *** NEW STARTUP HIBERNATION LOGIC *** ---
+            // Check if hibernation is enabled and if the server is starting empty.
+            if (plugin.getPluginConfig().isHibernationEnabled() && Bukkit.getOnlinePlayers().isEmpty()) {
+                plugin.getLogger().info("Server is starting with no players. Loading chunks directly into hibernation mode.");
+                // Load chunk data into the hibernating map instead of the active one.
+                this.hibernatingChunks.putAll(loadedChunks);
+                // We deliberately DO NOT physically force-load the chunks here.
+            } else {
+                // This is the normal behavior for a reload or if players are online.
+                this.forceLoadedChunks.putAll(loadedChunks);
+                int count = 0;
+                for (Map.Entry<String, Set<ChunkCoord>> entry : this.forceLoadedChunks.entrySet()) {
+                    World world = Bukkit.getWorld(entry.getKey());
+                    if (world != null) {
+                        for (ChunkCoord coord : entry.getValue()) {
+                            world.getChunkAt(coord.getX(), coord.getZ()).setForceLoaded(true);
+                            count++;
+                        }
+                    }
+                }
+                plugin.getLogger().info("Successfully loaded and force-loaded " + count + " chunks.");
+            }
+
             plugin.getLogger().info("Loaded " + getTotalForceLoadedChunks() + " force-loaded chunks from active_chunks.json.");
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to load active_chunks.json: " + e.getMessage());
@@ -343,5 +373,113 @@ public class ForceLoadManager {
 
         long duration = System.currentTimeMillis() - startTime;
         return new ConsistencyCheckResult(totalChunksChecked, removedEntriesCount, unforceLoadedChunksCount, duration);
+    }
+
+    public void handlePlayerQuit() {
+        PluginConfig config = plugin.getPluginConfig();
+        if (!config.isHibernationEnabled() || Bukkit.getOnlinePlayers().size() > 0) {
+            return;
+        }
+
+        // If there are no players left, schedule a task to unload the chunks
+        if (unloadTask == null || unloadTask.isCancelled()) {
+            plugin.getLogger().info("Server is empty. Chunks will be unloaded in " + config.getUnloadDelayMinutes() + " minutes.");
+            unloadTask = new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (Bukkit.getOnlinePlayers().isEmpty()) {
+                        hibernateChunks();
+                    }
+                }
+            }.runTaskLater(plugin, config.getUnloadDelayMinutes() * 60 * 20L);
+        }
+    }
+
+    public void handlePlayerJoin() {
+        PluginConfig config = plugin.getPluginConfig();
+        if (!config.isHibernationEnabled()) {
+            return;
+        }
+
+        // If an unload task is pending, cancel it because a player has returned.
+        if (unloadTask != null && !unloadTask.isCancelled()) {
+            unloadTask.cancel();
+            unloadTask = null;
+            plugin.getLogger().info("Player joined, hibernation cancelled.");
+        }
+
+        // If chunks are hibernating and a player joins, start reloading them.
+        if (!hibernatingChunks.isEmpty()) {
+            wakeUpChunks();
+        }
+    }
+
+    private void hibernateChunks() {
+        plugin.getLogger().info("Hibernating " + getTotalForceLoadedChunks() + " force-loaded chunks.");
+        // Move all force-loaded chunks to the hibernating map
+        hibernatingChunks.putAll(forceLoadedChunks);
+        forceLoadedChunks.clear();
+
+        // Un-force-load all chunks
+        for (Map.Entry<String, Set<ChunkCoord>> entry : hibernatingChunks.entrySet()) {
+            World world = Bukkit.getWorld(entry.getKey());
+            if (world != null) {
+                for (ChunkCoord coord : entry.getValue()) {
+                    world.getChunkAt(coord.getX(), coord.getZ()).setForceLoaded(false);
+                }
+            }
+        }
+        // Save the now-empty active chunks list
+        saveData(true);
+    }
+
+    private void wakeUpChunks() {
+        plugin.getLogger().info("Waking up " + hibernatingChunks.values().stream().mapToInt(Set::size).sum() + " chunks from hibernation...");
+
+        // Use an iterator to safely remove chunks as we process them
+        Iterator<Map.Entry<String, Set<ChunkCoord>>> worldIterator = hibernatingChunks.entrySet().iterator();
+        PluginConfig config = plugin.getPluginConfig();
+
+        reloadTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!worldIterator.hasNext()) {
+                    plugin.getLogger().info("All chunks restored from hibernation.");
+                    saveData();
+                    this.cancel();
+                    return;
+                }
+
+                int reloadedThisBatch = 0;
+                while (worldIterator.hasNext() && reloadedThisBatch < config.getReloadChunksPerBatch()) {
+                    Map.Entry<String, Set<ChunkCoord>> worldEntry = worldIterator.next();
+                    String worldName = worldEntry.getKey();
+                    Set<ChunkCoord> coords = worldEntry.getValue();
+
+                    World world = Bukkit.getWorld(worldName);
+                    if (world == null) {
+                        continue; // Skip this world if not loaded
+                    }
+
+                    Iterator<ChunkCoord> coordIterator = coords.iterator();
+                    while (coordIterator.hasNext() && reloadedThisBatch < config.getReloadChunksPerBatch()) {
+                        ChunkCoord coord = coordIterator.next();
+
+                        // Force-load the chunk
+                        world.getChunkAt(coord.getX(), coord.getZ()).setForceLoaded(true);
+
+                        // Move it back to the active list
+                        forceLoadedChunks.computeIfAbsent(worldName, k -> new HashSet<>()).add(coord);
+                        coordIterator.remove(); // Remove from hibernating list
+                        reloadedThisBatch++;
+                    }
+
+                    // If we've processed all chunks for this world, remove the world entry
+                    if (!coords.iterator().hasNext()) {
+                        worldIterator.remove();
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 0L, config.getReloadStaggerTicks());
     }
 }

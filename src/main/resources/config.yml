@@ -13,6 +13,21 @@ settings:
   # Enable debug mode for more verbose console logging.
   debug-mode: false
 
+# Settings for the server hibernation feature.
+# When the server is empty, the plugin can unload all chunks to save resources.
+hibernation:
+  # Set to true to enable this feature.
+  enabled: true
+  # How long the server must be empty before chunks are unloaded.
+  # Measured in minutes.
+  unload-delay-minutes: 60
+  # How many chunks to reload at a time when a player joins an empty server.
+  # Higher values reload faster but may cause more lag.
+  reload-chunks-per-batch: 5
+  # How often (in ticks) to process a batch of chunks for reloading. 20 ticks = 1 second.
+  # A value of 2 means a batch is reloaded every 2 ticks.
+  reload-stagger-ticks: 5
+
 # List of materials that, when placed by a player, should make their chunk tick-worthy and force-loaded.
 # Only block entities (TileEntities) that perform continuous operations are typically needed here.
 # Ensure material names are valid Minecraft Material enums (case-insensitive in plugin, but use uppercase for clarity).

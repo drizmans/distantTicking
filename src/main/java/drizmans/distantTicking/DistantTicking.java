@@ -7,6 +7,11 @@ import drizmans.distantTicking.manager.ForceLoadManager;
 import drizmans.distantTicking.config.PluginConfig;
 import drizmans.distantTicking.util.ChunkCoord;
 import drizmans.distantTicking.util.TickWorthyBlocks;
+import org.bukkit.Bukkit;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.World;
 import org.bukkit.Chunk;
@@ -19,7 +24,7 @@ import java.util.logging.Level;
 import java.util.logging.SimpleFormatter;
 
 
-public final class DistantTicking extends JavaPlugin {
+public final class DistantTicking extends JavaPlugin implements Listener {
 
     private static DistantTicking instance;
     private ChunkDataManager chunkDataManager;
@@ -73,8 +78,6 @@ public final class DistantTicking extends JavaPlugin {
 
             getLogger().addHandler(consoleHandler);
         }
-        // --- END CORRECTED LOGGING SETUP ---
-
 
         TickWorthyBlocks.initialize(this.pluginConfig); // Initialize tick-worthy blocks from config
 
@@ -87,10 +90,10 @@ public final class DistantTicking extends JavaPlugin {
 
         // 4. Register Event Listeners
         getServer().getPluginManager().registerEvents(new BlockTrackingListener(this, chunkDataManager, forceLoadManager), this);
+        getServer().getPluginManager().registerEvents(this, this);
 
         // 5. Register Commands
         getCommand("dt").setExecutor(new DistantTickingCommand(this, chunkDataManager, forceLoadManager, pluginConfig));
-
 
         // 6. Start auto-save task using interval from config
         this.forceLoadManager.startAutoSaveTask(pluginConfig.getAutoSaveIntervalMinutes());
@@ -165,5 +168,23 @@ public final class DistantTicking extends JavaPlugin {
      */
     public PluginConfig getPluginConfig() {
         return pluginConfig;
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        // Only trigger if the player count is now 1
+        if (Bukkit.getOnlinePlayers().size() == 1) {
+            forceLoadManager.handlePlayerJoin();
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        // We run this on the next tick to ensure the player list is updated
+        Bukkit.getScheduler().runTask(this, () -> {
+            if (Bukkit.getOnlinePlayers().isEmpty()) {
+                forceLoadManager.handlePlayerQuit();
+            }
+        });
     }
 }
