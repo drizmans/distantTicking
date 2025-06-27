@@ -148,10 +148,14 @@ public class ForceLoadManager {
         }
 
         dataDirty = false;
+        Map<String, Set<ChunkCoord>> combinedChunks = new ConcurrentHashMap<>();
+        forceLoadedChunks.forEach((world, coords) -> combinedChunks.computeIfAbsent(world, k -> new HashSet<>()).addAll(coords));
+        hibernatingChunks.forEach((world, coords) -> combinedChunks.computeIfAbsent(world, k -> new HashSet<>()).addAll(coords));
+
 
         Runnable saveRunnable = () -> {
             try (FileWriter writer = new FileWriter(dataFile)) {
-                gson.toJson(forceLoadedChunks, writer);
+                gson.toJson(combinedChunks, writer);
                 plugin.getLogger().info("Saved " + getTotalForceLoadedChunks() + " force-loaded chunks to active_chunks.json.");
             } catch (IOException e) {
                 plugin.getLogger().severe("Failed to save active_chunks.json: " + e.getMessage());
@@ -234,7 +238,22 @@ public class ForceLoadManager {
      * @return The total count of force-loaded chunks.
      */
     public int getTotalForceLoadedChunks() {
-        return forceLoadedChunks.values().stream().mapToInt(Set::size).sum();
+        // Sum the number of chunks in the active map
+        int activeCount = this.forceLoadedChunks.values().stream().mapToInt(Set::size).sum();
+        // Sum the number of chunks in the hibernating map
+        int hibernatingCount = this.hibernatingChunks.values().stream().mapToInt(Set::size).sum();
+        // Return the total
+        return activeCount + hibernatingCount;
+    }
+
+    // A new helper method to get the count of ONLY hibernating chunks for the status command
+    public int getHibernatingChunkCount() {
+        return this.hibernatingChunks.values().stream().mapToInt(Set::size).sum();
+    }
+
+    // A new helper method to get the count of ONLY active chunks for the status command
+    public int getActiveChunkCount() {
+        return this.forceLoadedChunks.values().stream().mapToInt(Set::size).sum();
     }
 
     /**
@@ -415,7 +434,7 @@ public class ForceLoadManager {
     }
 
     private void hibernateChunks() {
-        plugin.getLogger().info("Hibernating " + getTotalForceLoadedChunks() + " force-loaded chunks.");
+        plugin.getLogger().info("Hibernating " + getActiveChunkCount() + " force-loaded chunks.");
         // Move all force-loaded chunks to the hibernating map
         hibernatingChunks.putAll(forceLoadedChunks);
         forceLoadedChunks.clear();
@@ -434,7 +453,7 @@ public class ForceLoadManager {
     }
 
     private void wakeUpChunks() {
-        plugin.getLogger().info("Waking up " + hibernatingChunks.values().stream().mapToInt(Set::size).sum() + " chunks from hibernation...");
+        plugin.getLogger().info("Waking up " + getHibernatingChunkCount() + " chunks from hibernation...");
 
         // Use an iterator to safely remove chunks as we process them
         Iterator<Map.Entry<String, Set<ChunkCoord>>> worldIterator = hibernatingChunks.entrySet().iterator();
