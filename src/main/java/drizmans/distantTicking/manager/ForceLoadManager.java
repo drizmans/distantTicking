@@ -434,6 +434,11 @@ public class ForceLoadManager {
     }
 
     private void hibernateChunks() {
+        if (reloadTask != null && !reloadTask.isCancelled()) {
+            reloadTask.cancel();
+            reloadTask = null;
+        }
+
         plugin.getLogger().info("Hibernating " + getActiveChunkCount() + " force-loaded chunks.");
         // Move all force-loaded chunks to the hibernating map
         hibernatingChunks.putAll(forceLoadedChunks);
@@ -453,50 +458,72 @@ public class ForceLoadManager {
     }
 
     private void wakeUpChunks() {
-        plugin.getLogger().info("Waking up " + getHibernatingChunkCount() + " chunks from hibernation...");
+        if (reloadTask != null && !reloadTask.isCancelled()) {
+            plugin.getLogger().info("Wake-up task is already running.");
+            return;
+        }
 
-        // Use an iterator to safely remove chunks as we process them
-        Iterator<Map.Entry<String, Set<ChunkCoord>>> worldIterator = hibernatingChunks.entrySet().iterator();
+        plugin.getLogger().info("Waking up " + getHibernatingChunkCount() + " chunks from hibernation...");
         PluginConfig config = plugin.getPluginConfig();
 
         reloadTask = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!worldIterator.hasNext()) {
+                // If there are no more chunks to process, the job is done.
+                if (hibernatingChunks.isEmpty()) {
                     plugin.getLogger().info("All chunks restored from hibernation.");
                     saveData();
+                    reloadTask = null; // Mark task as complete
                     this.cancel();
                     return;
                 }
 
                 int reloadedThisBatch = 0;
-                while (worldIterator.hasNext() && reloadedThisBatch < config.getReloadChunksPerBatch()) {
+                // Get an iterator for the worlds. This happens every tick to get a fresh view.
+                Iterator<Map.Entry<String, Set<ChunkCoord>>> worldIterator = hibernatingChunks.entrySet().iterator();
+
+                // Loop through the worlds until our batch is full
+                while (worldIterator.hasNext()) {
                     Map.Entry<String, Set<ChunkCoord>> worldEntry = worldIterator.next();
                     String worldName = worldEntry.getKey();
                     Set<ChunkCoord> coords = worldEntry.getValue();
-
                     World world = Bukkit.getWorld(worldName);
+
+                    // Skip this world if it's not loaded for some reason
                     if (world == null) {
-                        continue; // Skip this world if not loaded
+                        continue;
                     }
 
                     Iterator<ChunkCoord> coordIterator = coords.iterator();
-                    while (coordIterator.hasNext() && reloadedThisBatch < config.getReloadChunksPerBatch()) {
+                    // Loop through the chunks in this world
+                    while (coordIterator.hasNext()) {
                         ChunkCoord coord = coordIterator.next();
 
-                        // Force-load the chunk
+                        // Process the chunk
                         world.getChunkAt(coord.getX(), coord.getZ()).setForceLoaded(true);
-
-                        // Move it back to the active list
                         forceLoadedChunks.computeIfAbsent(worldName, k -> new HashSet<>()).add(coord);
-                        coordIterator.remove(); // Remove from hibernating list
+                        coordIterator.remove(); // Remove the chunk from the hibernating set
                         reloadedThisBatch++;
+
+                        // If the batch is full for this tick, stop and wait for the next tick.
+                        if (reloadedThisBatch >= config.getReloadChunksPerBatch()) {
+                            return;
+                        }
                     }
 
-                    // If we've processed all chunks for this world, remove the world entry
-                    if (!coords.iterator().hasNext()) {
+                    // If all chunks for this world have been processed, remove the world entry.
+                    if (coords.isEmpty()) {
                         worldIterator.remove();
                     }
+                }
+
+                // This part is now a fallback, it will be reached if the task processes all remaining
+                // chunks and the total was less than a full batch.
+                if (hibernatingChunks.isEmpty()) {
+                    plugin.getLogger().info("All chunks restored from hibernation (final batch).");
+                    saveData();
+                    reloadTask = null;
+                    this.cancel();
                 }
             }
         }.runTaskTimer(plugin, 0L, config.getReloadStaggerTicks());

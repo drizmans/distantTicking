@@ -129,8 +129,12 @@ public class DistantTickingCommand implements CommandExecutor {
         }
 
         int totalForceLoaded = forceLoadManager.getTotalForceLoadedChunks();
+        int totalHibernating = forceLoadManager.getHibernatingChunkCount();
+        int totalActive = forceLoadManager.getActiveChunkCount();
         sender.sendMessage(ChatColor.AQUA + "--- DistantTicking Status ---");
         sender.sendMessage(ChatColor.YELLOW + "Total Chunks Force-Loaded by Plugin: " + ChatColor.WHITE + totalForceLoaded);
+        sender.sendMessage(ChatColor.YELLOW + "Total Hibernating: " + ChatColor.WHITE + totalHibernating);
+        sender.sendMessage(ChatColor.YELLOW + "Total Active: " + ChatColor.WHITE + totalActive);
         sender.sendMessage(ChatColor.YELLOW + "Auto-Save Interval: " + ChatColor.WHITE + pluginConfig.getAutoSaveIntervalMinutes() + " minutes");
         sender.sendMessage(ChatColor.YELLOW + "Consistency Check Interval: " + ChatColor.WHITE + pluginConfig.getConsistencyCheckIntervalHours() + " hours");
         sender.sendMessage(ChatColor.YELLOW + "Debug Mode: " + (pluginConfig.isDebugMode() ? ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled"));
