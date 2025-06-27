@@ -11,6 +11,7 @@ Traditionally, Minecraft only "ticks" chunks within a player's `simulation-dista
 ## ✨ Features
 
 - **Intelligent Chunk Loading:** Automatically detects and force-loads chunks by tracking the **specific locations** of player-placed blocks (e.g., Furnaces, Hoppers, Redstone, Pistons, Rails).
+- **Chunk Hibernating:** Automatically hibernates chunks when there are no players online after a predefined time.
 - **Persistent Ticking:** Ensures your machines, farms, and redstone contraptions keep working 24/7, even when no players are nearby or in the same dimension.
 - **Performance Optimization:** Allows server owners to lower the global `simulation-distance` in `server.properties` (e.g., to 4-8) for better overall TPS and reduced server load, while DistantTicking manages the critical ticking areas.
 - **Configurable Tick-Worthy Blocks:** Easily customize which block materials trigger chunk loading directly in the `config.yml`.
@@ -44,7 +45,7 @@ This approach provides precise tracking, reliable persistence, and efficient res
 3.  Restart your PaperMC server.
 4.  A `DistantTicking` folder will be created in your `plugins/` directory, containing `config.yml` and `active_chunks.json`.
 5.  IMPORTANT! If you add this to an existing world, you will want to run `/dt refresh <chunk radius> <vertical-up> <vertical-down>` to populate the new location-based tracking data for existing blocks. I advise doing this surgically, with a low chunk radius and appropriate vertical limits, as scanning many chunks or large vertical ranges can be slow.
-> You may want to run /dt cleanup after updating, in case I've changed anything.
+    > You may want to run /dt cleanup after updating, in case I've changed anything.
 
 ## 🛠️ Configuration (`config.yml`)
 
@@ -67,6 +68,21 @@ settings:
   # Set to 'true' to see detailed plugin activity (e.g., individual chunk loads/unloads).
   # These logs are *only* for DistantTicking and will not flood your console with other plugin's debug messages.
   debug-mode: false # Default: false
+
+# Settings for the server hibernation feature.
+# When the server is empty, the plugin can unload all chunks to save resources.
+hibernation:
+  # Set to true to enable this feature.
+  enabled: true
+  # How long the server must be empty before chunks are unloaded.
+  # Measured in minutes.
+  unload-delay-minutes: 60
+  # How many chunks to reload at a time when a player joins an empty server.
+  # Higher values reload faster but may cause more lag.
+  reload-chunks-per-batch: 5
+  # How often (in ticks) to process a batch of chunks for reloading. 20 ticks = 1 second.
+  # A value of 5 means a batch is reloaded every 5 ticks.
+  reload-stagger-ticks: 5
 
 # List of materials that, when placed by a player, should make their chunk tick-worthy and force-loaded.
 # Ensure material names are valid Minecraft Material enums (case-insensitive in plugin, but use uppercase for clarity).

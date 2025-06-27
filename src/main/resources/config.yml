@@ -25,7 +25,7 @@ hibernation:
   # Higher values reload faster but may cause more lag.
   reload-chunks-per-batch: 5
   # How often (in ticks) to process a batch of chunks for reloading. 20 ticks = 1 second.
-  # A value of 2 means a batch is reloaded every 2 ticks.
+  # A value of 5 means a batch is reloaded every 5 ticks.
   reload-stagger-ticks: 5
 
 # List of materials that, when placed by a player, should make their chunk tick-worthy and force-loaded.
